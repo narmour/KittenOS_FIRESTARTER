@@ -1,0 +1,1 @@
+add -gdwarf-2 to CONFIG_DEBUG_INFO to fix CFA stack errors when trying to print vars in gdb
