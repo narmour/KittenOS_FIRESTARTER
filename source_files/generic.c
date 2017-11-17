@@ -45,9 +45,10 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <pthread.h>
 
 /* use old memcpy to avoid GLIBC 2.14 dependency */
-__asm__(".symver memcpy, memcpy@GLIBC_2.2.5");
+//__asm__(".symver memcpy, memcpy@GLIBC_2.2.5");
 
 /* buffer for some generic implementations */
 // TODO remove global variables to allow thread safe execution of detection
@@ -299,8 +300,20 @@ int num_cpus()
     /* try sysconf configured cpus */
     if (num <= 0) { num = sysconf(_SC_NPROCESSORS_CONF); }
 
-    /*assume 1 if all detection methods fail*/
-    if (num < 1) { num = 1; }
+    /*assume running on kittenOS if all detection methods fail*/
+    if (num < 1) {
+        int status, i ,cpu, ncpus = 0;
+        cpu_set_t cpu_mask;
+        status = pthread_getaffinity_np(pthread_self(),sizeof(cpu_mask),&cpu_mask);
+
+        for(i;i<CPU_SETSIZE;i++){
+            if(CPU_ISSET(i,&cpu_mask))
+                ++ncpus;
+        }
+
+        //printf("  NHA_FS Total # CPUs:   %d\n", ncpus);
+        num = ncpus;
+    }
 
     return num;
 }
@@ -461,7 +474,7 @@ void init_cpuinfo(cpu_info_t *cpuinfo,int print)
     cpuinfo->num_packages           = num_packages();
     cpuinfo->clockrate              = get_cpu_clockrate(1, 0);
 
-    /* setup supported feature list*/
+    // setup supported feature list
     if(!strcmp(cpuinfo->architecture,"x86_64")) cpuinfo->features   |= X86_64;
     if (feature_available("SMT")) cpuinfo->features                 |= SMT;
     if (feature_available("FPU")) cpuinfo->features                 |= FPU;
@@ -483,10 +496,13 @@ void init_cpuinfo(cpu_info_t *cpuinfo,int print)
     if (feature_available("AES")) cpuinfo->features                 |= AES;
     if (feature_available("AVX512")) cpuinfo->features              |= AVX512;
 
-    /* determine cache details */
+    // determine cache details
     for (i=0; i<(unsigned int)num_caches(0); i++)
     {
+        printf("num caches: %u\n",num_caches(0));
         cpuinfo->Cache_shared[cache_level(0,i)-1]=cache_shared(0,i);
+        printf("past chache level\n");
+
         cpuinfo->Cacheline_size[cache_level(0,i)-1]=cacheline_length(0,i);
         if (cpuinfo->Cachelevels < (unsigned int)cache_level(0,i)) { cpuinfo->Cachelevels = cache_level(0,i); }
         switch (cache_type(0,i))
@@ -514,7 +530,7 @@ void init_cpuinfo(cpu_info_t *cpuinfo,int print)
         }
     }
 
-    /* print a summary */
+    // print a summary
     if (print)
     {
         fflush(stdout);
@@ -575,7 +591,8 @@ int cpu_set(int id)
 
     CPU_ZERO( &mask );
     CPU_SET( id , &mask );
-    return sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+    //return sched_setaffinity(0, sizeof(cpu_set_t), &mask);
+    return 0;
 }
 
 /**
@@ -967,9 +984,13 @@ int generic_cache_shared(int cpu, int id) {
     int num = 0;
 
     generic_cache_info(cpu, id, tmp, sizeof(tmp));
+    printf("TMP: %s\n",tmp);
+
     beg = strstr(tmp,",")+1;
     if (beg == NULL) return -1;
     else beg++;
+    printf("got heeere\n");
+    printf("BEG_cache_shared: %s\n",beg);
     end = strstr(beg,",")+1;
     if (end == NULL) return -1;
     else end++;

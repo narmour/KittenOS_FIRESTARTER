@@ -36,6 +36,7 @@
 #include "firestarter_global.h"
 #include "watchdog.h"
 #include "help.h"
+#include <lwk/liblwk.h>
 
 $MAC /* Mac OS compatibility */
 $MAC #ifdef __MACH__
@@ -143,7 +144,8 @@ static void *init()
     unsigned int i, t;
 
 #if (defined(linux) || defined(__linux__)) && defined (AFFINITY)
-    cpu_set(cpu_bind[0]);
+    //printf("TRYING TO CPU_SET\n");
+    //cpu_set(cpu_bind[0]);
 #endif
     mdp->cpuinfo = cpuinfo;
 
@@ -224,7 +226,7 @@ $$        for (i=0;i<5;i++) mdp->threaddata[t].bytes[i] = 0;
     mdp->ack = 0;
 
 #if (defined(linux) || defined(__linux__)) && defined (AFFINITY)
-    cpu_set(cpu_bind[0]);
+    //cpu_set(cpu_bind[0]);
 #endif
 
     /* wait for threads to complete their initialization */
@@ -281,7 +283,6 @@ static void evaluate_environment()
     if((NUM_THREADS>0) && (NUM_THREADS > cpuinfo->num_cpus)){
         fprintf(stderr, "\nWarning: not enough CPUs for requested number of threads\n");
     }
-
     if (fsbind==NULL) { // no cpu binding defined
 #if (defined(linux) || defined(__linux__)) && defined (AFFINITY)
         CPU_ZERO(&cpuset);
@@ -296,14 +297,14 @@ static void evaluate_environment()
         else{ // if -n / --threads is set
           int current_cpu=0;
           for (i = 0; i < NUM_THREADS; i++) {
-            /* search for available cpu */
+            // search for available cpu 
             while(! cpu_allowed(current_cpu) ) {
               current_cpu++;
 
-              /* if reached end of avail cpus or max(int) */
+              // if reached end of avail cpus or max(int) 
               if (current_cpu >= cpuinfo->num_cpus || current_cpu < 0)
               {
-                /* start at beginning */
+                // start at beginning 
                 fprintf(stderr, "Error: You are requesting more threads than there are CPUs available in the given cpuset.\n");
                 fprintf(stderr, "This can be caused by the taskset tool, cgroups, the batch system, or similar mechanisms.\n" ); \
                 fprintf(stderr, "Please fix the -n/--threads argument to match the restrictions.\n");
@@ -311,7 +312,7 @@ static void evaluate_environment()
               }
             }
             ADD_CPU_SET(current_cpu,cpuset);
-            /* next cpu for next thread (or one of the following) */
+            // next cpu for next thread (or one of the following) 
             current_cpu++;
           }
         }
@@ -371,14 +372,17 @@ $CUDA         else NUM_THREADS++;
                 exit(127);
             }
             if ((s)&&(r)) for (i=p_val; (int)i<=r_val; i+=s_val) {
+                printf("ADDING CPU: %i\n",i);
                 ADD_CPU_SET(i,cpuset);
                 NUM_THREADS++;
             }
             else if (r) for (i=p_val; (int)i<=r_val; i++) {
+                printf("ADDING CPU: %i\n",i);
                 ADD_CPU_SET(i,cpuset);
                 NUM_THREADS++;
             }
             else {
+                printf("ADDING CPU pval: %i\n",p_val);
                 ADD_CPU_SET(p_val,cpuset);
                 NUM_THREADS++;
             }
@@ -389,6 +393,8 @@ $CUDA         else NUM_THREADS++;
 #endif
 
     cpu_bind = (unsigned long long *) calloc((cpuinfo->num_cpus + 1), sizeof(unsigned long long));
+    //printf("NUMCPU: %i\n",CPU_COUNT(&cpuset));
+    //printf("NUM_THREADS: %i\n",NUM_THREADS);
     if (NUM_THREADS == 0) {
         fprintf(stderr, "Error: found no useable CPUs!\n");
         fflush(stderr);
@@ -398,6 +404,7 @@ $CUDA         else NUM_THREADS++;
     else {
         for (i = 0; i < cpuinfo->num_cpus; i++) {
             if (CPU_ISSET(i, &cpuset)) {
+                //printf("CPUISSET: %i\n",i);
                 cpu_bind[j] = i;
                 j++;
             }
@@ -454,13 +461,36 @@ $TEMPLATE main_c.evaluate_environment_set_buffersize(dest,architectures)
         fprintf(stderr, "Internal Error: missing code-path %i!\n",FUNCTION);
         exit(1);
     }
+    
+
+}
+
+int running;
+void *dump_msr(void *args){
+    // read msr's on every cpu
+    while(running){
+        int i,j;
+        uint64_t data[NUM_MSR];
+        for(i=0;i<cpuinfo->num_cpus;i++){
+            printf("CPU %i: ",i);
+            task_switch_cpus(i);
+            nha_read_msr(data);
+            for(j=0;j<NUM_MSR;j++)
+                printf("%llu   ",data[j]);
+            printf("\n");
+        }
+    }
+
 
 }
 
 int main(int argc, char *argv[])
 {
+    verbose = 0;
+    running = 1;
     int i,c;
     unsigned long long iterations=0;
+    //printf("hi from main\n");
 
 $CUDA     #ifdef CUDA
 $CUDA     gpustruct * structpointer=malloc(sizeof(gpustruct));
@@ -627,7 +657,13 @@ $CUDA     }
 $CUDA     #endif
 
     evaluate_environment();
+    printf("NUMCPU: %i     NUMTHREAD: %i\n",cpuinfo->num_cpus,NUM_THREADS);
+
     init();
+
+    // create msr read thread
+    pthread_t msr_thread;
+    pthread_create(&msr_thread,NULL,dump_msr,NULL);
 
     //start worker threads
     _work(mdp, &LOADVAR);
@@ -636,8 +672,12 @@ $CUDA     #endif
     watchdog_arg.pid = getpid();
     watchdog_timer(&watchdog_arg);
 
-    /* wait for threads after watchdog has requested termination */
+
+    // wait for threads after watchdog has requested termination
     for(i = 0; i < mdp->num_threads; i++) pthread_join(threads[i], NULL);
+
+    running = 0;
+    pthread_join(msr_thread,NULL);
 
     if (verbose == 2){
        unsigned long long start_tsc,stop_tsc;
@@ -670,6 +710,8 @@ $CUDA     #ifdef CUDA
 $CUDA     free(structpointer);
 $CUDA     #endif
 $CUDA
+    printf("NHA_MAIN\n");
+    printf("NUMCPU: %i     NUMTHREAD: %i\n",cpuinfo->num_cpus,NUM_THREADS);
     return EXIT_SUCCESS;
 }
 

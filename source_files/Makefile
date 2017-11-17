@@ -24,11 +24,22 @@ LINUX_CC?=gcc
 # tracing options (VampirTrace/Score-P):
 #CC=vtcc -vt:cc gcc -vt:inst manual -DVTRACE -DENABLE_VTRACING
 #CC=scorep --user --nocompiler gcc -DENABLE_SCOREP
+O=$(shell pwd)
+BASE=..
+PREFIX=$(O)/$(BASE)/install
+INCDIRS += \
+	-I. \
+	-I$(PREFIX)/include \
+	-I$(BASE)/../include \
+	-I$O/$(BASE)/../include \
+	-I$O/$(BASE)/../include2 \
 
-LINUX_C_FLAGS=-fomit-frame-pointer -Wall -std=c99 -I. -DAFFINITY
+LIBDIRS += -L$(PREFIX)/lib
+
+LINUX_C_FLAGS=-fomit-frame-pointer -Wall  -DAFFINITY $(INCDIRS) -ggdb
 OPT_STD=-O2
 OPT_ASM=-O0
-LINUX_L_FLAGS=-lpthread -lrt -lm
+LINUX_L_FLAGS=-lpthread -lrt -lm -static $(LIBDIRS) -llwk -ggdb
 
 # source and object files of assembler routines
 $TEMPLATE Makefile.src_obj_files(dest,templates,version)

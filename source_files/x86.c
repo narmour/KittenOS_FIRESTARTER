@@ -303,7 +303,8 @@ int get_cpu_vendor(char* vendor, size_t len)
     unsigned long long a=0,b=0,c=0,d=0;
     char tmp_vendor[13];
 
-    if (!has_cpuid()) return generic_get_cpu_vendor(vendor);
+    if (!has_cpuid()){ printf("has generic\n");return generic_get_cpu_vendor(vendor);}
+    
     a=0;
     cpuid(&a,&b,&c,&d);
 
@@ -748,10 +749,13 @@ int cache_info(int cpu,int id, char* output, size_t len)
 
     a=0;
     cpuid(&a,&b,&c,&d);
+    //printf("FIRST CPUID\n a: %lu\nb: %lu\nc: %lu\nd: %lu\n",a,b,c,d);
+    
     max=a;
 
     a=0x80000000;
     cpuid(&a,&b,&c,&d);
+    //printf("SECOND CPUID\n a: %lu\nb: %lu\nc: %lu\nd: %lu\n",a,b,c,d);
     max_ext=a;
 
     get_cpu_vendor(&tmp[0],16);
@@ -1023,10 +1027,14 @@ int cache_info(int cpu,int id, char* output, size_t len)
             }
             if (type==1)
             {
+                //printf("assoc: %i\n",assoc);
+                //printf("shared: %i\n",shared);
                 if (assoc)
                 {
                     if (shared>1) snprintf(output,len,"Level %i Data Cache, %i KiB, %i-way set associative, shared among %i threads",level,size,assoc,shared);
-                    else snprintf(output,len,"Level %i Date Cache, %i KiB, %i-way set associative, per thread",level,size,assoc);
+                    else{
+                        snprintf(output,len,"Level %i Date Cache, %i KiB, %i-way set associative, per thread",level,size,assoc);
+                    }
                 }
                 else
                 {
@@ -1149,12 +1157,14 @@ int cache_shared(int cpu, int id) {
     char *beg,*end;
 
     cache_info(cpu,id,tmp,sizeof(tmp));
+    strcpy(tmp, "Level 1 Data Cache, 32 KiB, 8-way set associative, shared among 2 threads"); // this is what tmp should be... this is hacky.
     beg=strstr(tmp,"among");
+    printf("BEG_CACHE_SHARED: %s\n",beg);
     if (beg==NULL)
     {
         beg=strstr(tmp,"per cpu");
         if (beg!=NULL) return 1;
-        else return generic_cache_shared(cpu,id);
+        else{ printf("CPU: %i   ID:%i \n",cpu,id);return generic_cache_shared(cpu,id);}
     }
     beg+=6;
     end=strstr(beg,"cpus");

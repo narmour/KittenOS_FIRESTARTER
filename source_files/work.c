@@ -93,8 +93,15 @@ void *thread(void *threaddata)
     unsigned int tmp = 0;
     unsigned long long old = THREAD_STOP;
 
+
+    printf(" THREAD %i    running on CPU %i \n",id,id);
+    task_switch_cpus(id); 
+
+    
+
     /* wait untill master thread starts initialization */
     while(global_data->thread_comm[id] != THREAD_INIT);
+    printf("thread got here\n");
 
     while(1){
         switch(global_data->thread_comm[id]){
@@ -111,6 +118,10 @@ void *thread(void *threaddata)
                     if(mydata->buffersizeMem){
                         mydata->bufferMem = _mm_malloc(mydata->buffersizeMem, mydata->alignment);
                         mydata->addrMem = (unsigned long long)(mydata->bufferMem);
+                        printf("buffersizeMem: %lu\n",mydata->buffersizeMem);
+                        printf("bufferMem: %lu\n",mydata->bufferMem);
+                        printf("ALLOCATING MEMORY\n");
+                        printf("FUNCTION: %i\n",mydata->FUNCTION);
                     }
                     if(mydata->bufferMem == NULL){
                         global_data->ack = THREAD_INIT_FAILURE;
@@ -118,7 +129,7 @@ void *thread(void *threaddata)
                     else{ 
                         global_data->ack = id + 1; 
                     }
-
+                    
                     /* call init function */
                     switch (mydata->FUNCTION)
                     {
